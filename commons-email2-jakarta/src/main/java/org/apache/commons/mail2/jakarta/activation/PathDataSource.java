@@ -17,6 +17,7 @@
 
 package org.apache.commons.mail2.jakarta.activation;
 
+import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -107,7 +108,7 @@ public final class PathDataSource implements DataSource {
      */
     @Override
     public InputStream getInputStream() throws IOException {
-        return Files.newInputStream(path, options);
+        return new AutoCloseOnEndOfFileInputStream(Files.newInputStream(path, options));
     }
 
     /**
@@ -139,6 +140,41 @@ public final class PathDataSource implements DataSource {
      */
     public Path getPath() {
         return path;
+    }
+
+    private static final class AutoCloseOnEndOfFileInputStream extends FilterInputStream {
+
+        private boolean closed;
+
+        private AutoCloseOnEndOfFileInputStream(final InputStream inputStream) {
+            super(inputStream);
+        }
+
+        @Override
+        public void close() throws IOException {
+            if (!closed) {
+                closed = true;
+                super.close();
+            }
+        }
+
+        @Override
+        public int read() throws IOException {
+            final int read = super.read();
+            if (read == -1) {
+                close();
+            }
+            return read;
+        }
+
+        @Override
+        public int read(final byte[] bytes, final int off, final int len) throws IOException {
+            final int read = super.read(bytes, off, len);
+            if (read == -1) {
+                close();
+            }
+            return read;
+        }
     }
 
 }
