@@ -107,7 +107,7 @@ public final class PathDataSource implements DataSource {
      */
     @Override
     public InputStream getInputStream() throws IOException {
-        return Files.newInputStream(path, options);
+        return new org.apache.commons.io.input.AutoCloseInputStream(Files.newInputStream(path, options));
     }
 
     /**
