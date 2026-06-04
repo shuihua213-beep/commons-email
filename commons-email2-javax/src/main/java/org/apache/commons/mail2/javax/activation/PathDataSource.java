@@ -14,9 +14,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.commons.mail2.javax.activation;
 
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -107,6 +108,9 @@ public final class PathDataSource implements DataSource {
      */
     @Override
     public InputStream getInputStream() throws IOException {
+        if (options == null || options.length == 0) {
+            return new FileInputStream(path.toFile());
+        }
         return Files.newInputStream(path, options);
     }
 
@@ -129,6 +133,9 @@ public final class PathDataSource implements DataSource {
      */
     @Override
     public OutputStream getOutputStream() throws IOException {
+        if (options == null || options.length == 0) {
+            return new FileOutputStream(path.toFile());
+        }
         return Files.newOutputStream(path, options);
     }
 

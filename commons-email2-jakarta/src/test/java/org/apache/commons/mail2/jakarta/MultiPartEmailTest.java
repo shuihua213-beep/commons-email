@@ -39,6 +39,8 @@ import jakarta.activation.FileDataSource;
 import jakarta.activation.URLDataSource;
 import jakarta.mail.internet.MimeMultipart;
 
+import org.apache.commons.mail2.jakarta.activation.PathDataSource;
+
 class MultiPartEmailTest extends AbstractEmailTest {
 
     /** */
@@ -148,6 +150,14 @@ class MultiPartEmailTest extends AbstractEmailTest {
         // resource on windows systems
         final File tmpFile = File.createTempFile("attachment", ".eml");
         email.attach(new FileDataSource(tmpFile), "Test Attachment", "Test Attachment Desc");
+        assertTrue(tmpFile.delete());
+    }
+
+    @Test
+    void testAttachPathLocking() throws Exception {
+        // Similar to testAttachFileLocking but for PathDataSource
+        final File tmpFile = File.createTempFile("attachment", ".eml");
+        email.attach(new PathDataSource(tmpFile.toPath()), "Test Attachment", "Test Attachment Desc");
         assertTrue(tmpFile.delete());
     }
 

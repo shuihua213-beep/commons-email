@@ -32,6 +32,8 @@ import javax.activation.FileDataSource;
 import javax.activation.URLDataSource;
 import javax.mail.internet.MimeMultipart;
 
+import org.apache.commons.mail2.javax.activation.PathDataSource;
+
 import org.apache.commons.mail2.core.EmailConstants;
 import org.apache.commons.mail2.core.EmailException;
 import org.apache.commons.mail2.core.EmailUtils;
@@ -148,6 +150,14 @@ class MultiPartEmailTest extends AbstractEmailTest {
         // resource on windows systems
         final File tmpFile = File.createTempFile("attachment", ".eml");
         email.attach(new FileDataSource(tmpFile), "Test Attachment", "Test Attachment Desc");
+        assertTrue(tmpFile.delete());
+    }
+
+    @Test
+    void testAttachPathLocking() throws Exception {
+        // Similar to testAttachFileLocking but for PathDataSource
+        final File tmpFile = File.createTempFile("attachment", ".eml");
+        email.attach(new PathDataSource(tmpFile.toPath()), "Test Attachment", "Test Attachment Desc");
         assertTrue(tmpFile.delete());
     }
 
