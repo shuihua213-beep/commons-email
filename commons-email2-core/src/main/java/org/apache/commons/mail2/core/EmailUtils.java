@@ -317,6 +317,36 @@ public final class EmailUtils {
     }
 
     /**
+     * Converts an email address to its ASCII representation using "Punycode".
+     *
+     * @param email email address.
+     * @return The ASCII representation
+     * @since 2.0.0
+     */
+    public static String toAsciiEmail(final String email) {
+        return toEmailString(email, java.net.IDN::toASCII);
+    }
+
+    /**
+     * Converts a "Punycode" email address to its Unicode representation.
+     *
+     * @param email email address.
+     * @return The Unicode representation
+     * @since 2.0.0
+     */
+    public static String toUnicodeEmail(final String email) {
+        return toEmailString(email, java.net.IDN::toUnicode);
+    }
+
+    private static String toEmailString(final String email, final java.util.function.Function<String, String> converter) {
+        final int idx = email == null ? -1 : email.indexOf('@');
+        if (idx < 0) {
+            return email;
+        }
+        return email.substring(0, idx) + '@' + converter.apply(email.substring(idx + 1));
+    }
+
+    /**
      * Constructs a new {@code EmailException} with no detail message.
      */
     private EmailUtils() {
