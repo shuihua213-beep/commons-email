@@ -1,0 +1,144 @@
+diff --git a/commons-email2-jakarta/pom.xml b/commons-email2-jakarta/pom.xml
+index 821d901..e9cc6ee 100644
+--- a/commons-email2-jakarta/pom.xml
++++ b/commons-email2-jakarta/pom.xml
+@@ -34,17 +34,15 @@
+     <dependency>    
+       <groupId>org.apache.commons</groupId>    
+       <artifactId>commons-email2-core</artifactId>    
+-      <version>2.0.0-M2-SNAPSHOT</version>
++      <version>${project.version}</version>
+     </dependency>
+     <dependency>
+       <groupId>org.eclipse.angus</groupId>
+       <artifactId>jakarta.mail</artifactId>
+-      <version>2.0.5</version>
+     </dependency>
+     <dependency>
+       <groupId>com.github.davidmoten</groupId>
+       <artifactId>subethasmtp</artifactId>
+-      <version>7.2.2</version>
+       <scope>test</scope>
+       <exclusions>
+         <exclusion>
+diff --git a/commons-email2-javax/pom.xml b/commons-email2-javax/pom.xml
+index a2f2782..b58816f 100644
+--- a/commons-email2-javax/pom.xml
++++ b/commons-email2-javax/pom.xml
+@@ -34,17 +34,15 @@
+     <dependency>    
+       <groupId>org.apache.commons</groupId>    
+       <artifactId>commons-email2-core</artifactId>    
+-      <version>2.0.0-M2-SNAPSHOT</version>
++      <version>${project.version}</version>
+     </dependency>
+     <dependency>
+       <groupId>com.sun.mail</groupId>
+       <artifactId>jakarta.mail</artifactId>
+-      <version>1.6.8</version>
+     </dependency>
+     <dependency>
+       <groupId>org.subethamail</groupId>
+       <artifactId>subethasmtp</artifactId>
+-      <version>3.1.7</version>
+       <scope>test</scope>
+       <exclusions>
+         <exclusion>
+diff --git a/pom.xml b/pom.xml
+index 7ad629f..78de5ce 100644
+--- a/pom.xml
++++ b/pom.xml
+@@ -51,13 +51,13 @@
+       <dependency>
+         <groupId>org.slf4j</groupId>
+         <artifactId>slf4j-jdk14</artifactId>
+-        <version>2.0.17</version>
++        <version>${slf4j.version}</version>
+         <scope>test</scope>
+       </dependency>
+       <dependency>
+         <groupId>commons-io</groupId>
+         <artifactId>commons-io</artifactId>
+-        <version>2.22.0</version>
++        <version>${commons.io.version}</version>
+         <scope>test</scope>
+       </dependency>
+       <dependency>
+@@ -66,6 +66,26 @@
+         <version>${mockito-core.version}</version>
+         <scope>test</scope>
+       </dependency>
++      <dependency>
++        <groupId>org.eclipse.angus</groupId>
++        <artifactId>jakarta.mail</artifactId>
++        <version>${angus.mail.version}</version>
++      </dependency>
++      <dependency>
++        <groupId>com.sun.mail</groupId>
++        <artifactId>jakarta.mail</artifactId>
++        <version>${sun.mail.version}</version>
++      </dependency>
++      <dependency>
++        <groupId>com.github.davidmoten</groupId>
++        <artifactId>subethasmtp</artifactId>
++        <version>${subethasmtp.jakarta.version}</version>
++      </dependency>
++      <dependency>
++        <groupId>org.subethamail</groupId>
++        <artifactId>subethasmtp</artifactId>
++        <version>${subethasmtp.javax.version}</version>
++      </dependency>
+     </dependencies>
+   </dependencyManagement>
+ 
+@@ -104,6 +124,14 @@
+     <commons.jacoco.branchRatio>1.00</commons.jacoco.branchRatio>
+     <commons.jacoco.lineRatio>1.00</commons.jacoco.lineRatio>
+     <commons.jacoco.complexityRatio>1.00</commons.jacoco.complexityRatio>
++    <!-- Dependency versions -->
++    <angus.mail.version>2.0.5</angus.mail.version>
++    <sun.mail.version>1.6.8</sun.mail.version>
++    <subethasmtp.jakarta.version>7.2.2</subethasmtp.jakarta.version>
++    <subethasmtp.javax.version>3.1.7</subethasmtp.javax.version>
++    <slf4j.version>2.0.17</slf4j.version>
++    <commons.io.version>2.22.0</commons.io.version>
++    <project.version>${project.version}</project.version>
+   </properties>
+ 
+   <build>
+@@ -139,6 +167,35 @@
+       </plugins>
+     </pluginManagement>
+     <plugins>
++      <plugin>
++        <groupId>org.apache.maven.plugins</groupId>
++        <artifactId>maven-enforcer-plugin</artifactId>
++        <version>3.4.1</version>
++        <executions>
++          <execution>
++            <id>enforce</id>
++            <goals>
++              <goal>enforce</goal>
++            </goals>
++            <configuration>
++              <rules>
++                <requireDependencyVersion>
++                  <includes>
++                    <include>org.eclipse.angus:jakarta.mail</include>
++                    <include>com.sun.mail:jakarta.mail</include>
++                    <include>com.github.davidmoten:subethasmtp</include>
++                    <include>org.subethamail:subethasmtp</include>
++                    <include>org.slf4j:slf4j-jdk14</include>
++                    <include>commons-io:commons-io</include>
++                    <include>org.mockito:mockito-core</include>
++                  </includes>
++                </requireDependencyVersion>
++              </rules>
++              <fail>true</fail>
++            </configuration>
++          </execution>
++        </executions>
++      </plugin>
+       <plugin>
+         <groupId>org.apache.rat</groupId>
+         <artifactId>apache-rat-plugin</artifactId>
