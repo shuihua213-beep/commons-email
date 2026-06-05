@@ -1,0 +1,219 @@
+diff --git a/commons-email2-core/src/main/java/org/apache/commons/mail2/core/EmailUtils.java b/commons-email2-core/src/main/java/org/apache/commons/mail2/core/EmailUtils.java
+index a6210f7..73ffabe 100644
+--- a/commons-email2-core/src/main/java/org/apache/commons/mail2/core/EmailUtils.java
++++ b/commons-email2-core/src/main/java/org/apache/commons/mail2/core/EmailUtils.java
+@@ -22,8 +22,10 @@ import java.io.IOException;
+ import java.nio.charset.StandardCharsets;
+ import java.nio.file.Files;
+ import java.nio.file.Path;
++import java.util.ArrayList;
+ import java.util.BitSet;
+ import java.util.Collection;
++import java.util.List;
+ import java.util.Locale;
+ import java.util.Map;
+ import java.util.Objects;
+@@ -316,6 +318,90 @@ public final class EmailUtils {
+         return value.toLowerCase(Locale.ROOT);
+     }
+ 
++    /**
++     * Parses an RFC822 formatted email address list and returns a set of standard email addresses.
++     *
++     * @param addresses the RFC822 formatted email address list, may be {@code null}
++     * @return a List of standard email addresses (without display names), never {@code null}
++     * @since 2.0.0-M3
++     */
++    public static List<String> parseEmailAddresses(final String addresses) {
++        final List<String> result = new ArrayList<>();
++        if (isEmpty(addresses)) {
++            return result;
++        }
++
++        final String trimmed = addresses.trim();
++        if (trimmed.isEmpty()) {
++            return result;
++        }
++
++        final char[] chars = trimmed.toCharArray();
++        int start = 0;
++        boolean inQuotes = false;
++        boolean inAngleBrackets = false;
++        int angleBracketStart = -1;
++        int angleBracketEnd = -1;
++
++        for (int i = 0; i < chars.length; i++) {
++            final char c = chars[i];
++
++            if (c == '"') {
++                inQuotes = !inQuotes;
++            } else if (!inQuotes && c == '<') {
++                inAngleBrackets = true;
++                angleBracketStart = i + 1;
++            } else if (!inQuotes && inAngleBrackets && c == '>') {
++                inAngleBrackets = false;
++                angleBracketEnd = i;
++            } else if (!inQuotes && !inAngleBrackets && c == ',') {
++                // Found a separator, extract the email address
++                extractEmailAddress(chars, start, i, angleBracketStart, angleBracketEnd, result);
++                start = i + 1;
++                angleBracketStart = -1;
++                angleBracketEnd = -1;
++            }
++        }
++
++        // Process the last address
++        extractEmailAddress(chars, start, chars.length, angleBracketStart, angleBracketEnd, result);
++
++        return result;
++    }
++
++    /**
++     * Extracts an email address from a segment of characters.
++     *
++     * @param chars the character array
++     * @param start the start index (inclusive)
++     * @param end the end index (exclusive)
++     * @param angleBracketStart the start index of &lt; if present, otherwise -1
++     * @param angleBracketEnd the end index of &gt; if present, otherwise -1
++     * @param result the list to add the extracted email address to
++     */
++    private static void extractEmailAddress(
++            final char[] chars,
++            final int start,
++            final int end,
++            final int angleBracketStart,
++            final int angleBracketEnd,
++            final List<String> result) {
++        String email;
++
++        if (angleBracketStart != -1 && angleBracketEnd != -1) {
++            // Extract from within angle brackets
++            email = new String(chars, angleBracketStart, angleBracketEnd - angleBracketStart);
++        } else {
++            // Extract directly from the segment, skipping whitespace
++            email = new String(chars, start, end - start);
++        }
++
++        final String trimmedEmail = email.trim();
++        if (!trimmedEmail.isEmpty()) {
++            result.add(trimmedEmail);
++        }
++    }
++
+     /**
+      * Constructs a new {@code EmailException} with no detail message.
+      */
+diff --git a/commons-email2-core/src/test/java/org/apache/commons/mail2/core/EmailUtilsTest.java b/commons-email2-core/src/test/java/org/apache/commons/mail2/core/EmailUtilsTest.java
+index 8397fbf..28f86c5 100644
+--- a/commons-email2-core/src/test/java/org/apache/commons/mail2/core/EmailUtilsTest.java
++++ b/commons-email2-core/src/test/java/org/apache/commons/mail2/core/EmailUtilsTest.java
+@@ -23,6 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
+ import static org.junit.jupiter.api.Assertions.assertTrue;
+ 
+ import java.util.HashMap;
++import java.util.List;
+ import java.util.Map;
+ 
+ import org.junit.jupiter.api.Test;
+@@ -70,4 +71,100 @@ class EmailUtilsTest {
+         assertEquals("joe+doe@apache.org", EmailUtils.encodeUrl("joe+doe@apache.org"));
+         assertEquals("peter%26paul%26mary@oldmusic.org", EmailUtils.encodeUrl("peter&paul&mary@oldmusic.org"));
+     }
++
++    @Test
++    void testParseEmailAddresses_Null() {
++        final List<String> result = EmailUtils.parseEmailAddresses(null);
++        assertTrue(result.isEmpty());
++    }
++
++    @Test
++    void testParseEmailAddresses_EmptyString() {
++        final List<String> result = EmailUtils.parseEmailAddresses("");
++        assertTrue(result.isEmpty());
++    }
++
++    @Test
++    void testParseEmailAddresses_WhitespaceOnly() {
++        final List<String> result = EmailUtils.parseEmailAddresses("   \t  \n  ");
++        assertTrue(result.isEmpty());
++    }
++
++    @Test
++    void testParseEmailAddresses_SingleAddress() {
++        final List<String> result = EmailUtils.parseEmailAddresses("user@example.com");
++        assertEquals(1, result.size());
++        assertEquals("user@example.com", result.get(0));
++    }
++
++    @Test
++    void testParseEmailAddresses_SingleAddressWithWhitespace() {
++        final List<String> result = EmailUtils.parseEmailAddresses("  user@example.com  ");
++        assertEquals(1, result.size());
++        assertEquals("user@example.com", result.get(0));
++    }
++
++    @Test
++    void testParseEmailAddresses_SingleAddressWithDisplayName() {
++        final List<String> result = EmailUtils.parseEmailAddresses("John Doe <john@example.com>");
++        assertEquals(1, result.size());
++        assertEquals("john@example.com", result.get(0));
++    }
++
++    @Test
++    void testParseEmailAddresses_SingleAddressWithQuotedDisplayName() {
++        final List<String> result = EmailUtils.parseEmailAddresses("\"Doe, John\" <john@example.com>");
++        assertEquals(1, result.size());
++        assertEquals("john@example.com", result.get(0));
++    }
++
++    @Test
++    void testParseEmailAddresses_MultipleAddresses() {
++        final List<String> result = EmailUtils.parseEmailAddresses(
++                "user1@example.com, user2@example.com, user3@example.com");
++        assertEquals(3, result.size());
++        assertEquals("user1@example.com", result.get(0));
++        assertEquals("user2@example.com", result.get(1));
++        assertEquals("user3@example.com", result.get(2));
++    }
++
++    @Test
++    void testParseEmailAddresses_MultipleAddressesWithDisplayNames() {
++        final List<String> result = EmailUtils.parseEmailAddresses(
++                "John Doe <john@example.com>, \"Smith, Jane\" <jane@example.com>, Bob <bob@example.com>");
++        assertEquals(3, result.size());
++        assertEquals("john@example.com", result.get(0));
++        assertEquals("jane@example.com", result.get(1));
++        assertEquals("bob@example.com", result.get(2));
++    }
++
++    @Test
++    void testParseEmailAddresses_MixedFormat() {
++        final List<String> result = EmailUtils.parseEmailAddresses(
++                "user1@example.com, \"Doe, John\" <john@example.com>, user3@example.com");
++        assertEquals(3, result.size());
++        assertEquals("user1@example.com", result.get(0));
++        assertEquals("john@example.com", result.get(1));
++        assertEquals("user3@example.com", result.get(2));
++    }
++
++    @Test
++    void testParseEmailAddresses_WithWhitespace() {
++        final List<String> result = EmailUtils.parseEmailAddresses(
++                "  user1@example.com  ,  \"Doe, John\"  <  john@example.com  >  ,  user3@example.com  ");
++        assertEquals(3, result.size());
++        assertEquals("user1@example.com", result.get(0));
++        assertEquals("john@example.com", result.get(1));
++        assertEquals("user3@example.com", result.get(2));
++    }
++
++    @Test
++    void testParseEmailAddresses_InvalidAddresses() {
++        final List<String> result = EmailUtils.parseEmailAddresses(
++                "invalid-email, another-invalid, @example.com");
++        assertEquals(3, result.size());
++        assertEquals("invalid-email", result.get(0));
++        assertEquals("another-invalid", result.get(1));
++        assertEquals("@example.com", result.get(2));
++    }
+ }

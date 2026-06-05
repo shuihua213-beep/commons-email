@@ -23,6 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import org.junit.jupiter.api.Test;
@@ -69,5 +70,101 @@ class EmailUtilsTest {
         assertEquals("joe.doe@apache.org", EmailUtils.encodeUrl("joe.doe@apache.org"));
         assertEquals("joe+doe@apache.org", EmailUtils.encodeUrl("joe+doe@apache.org"));
         assertEquals("peter%26paul%26mary@oldmusic.org", EmailUtils.encodeUrl("peter&paul&mary@oldmusic.org"));
+    }
+
+    @Test
+    void testParseEmailAddresses_Null() {
+        final List<String> result = EmailUtils.parseEmailAddresses(null);
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    void testParseEmailAddresses_EmptyString() {
+        final List<String> result = EmailUtils.parseEmailAddresses("");
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    void testParseEmailAddresses_WhitespaceOnly() {
+        final List<String> result = EmailUtils.parseEmailAddresses("   \t  \n  ");
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    void testParseEmailAddresses_SingleAddress() {
+        final List<String> result = EmailUtils.parseEmailAddresses("user@example.com");
+        assertEquals(1, result.size());
+        assertEquals("user@example.com", result.get(0));
+    }
+
+    @Test
+    void testParseEmailAddresses_SingleAddressWithWhitespace() {
+        final List<String> result = EmailUtils.parseEmailAddresses("  user@example.com  ");
+        assertEquals(1, result.size());
+        assertEquals("user@example.com", result.get(0));
+    }
+
+    @Test
+    void testParseEmailAddresses_SingleAddressWithDisplayName() {
+        final List<String> result = EmailUtils.parseEmailAddresses("John Doe <john@example.com>");
+        assertEquals(1, result.size());
+        assertEquals("john@example.com", result.get(0));
+    }
+
+    @Test
+    void testParseEmailAddresses_SingleAddressWithQuotedDisplayName() {
+        final List<String> result = EmailUtils.parseEmailAddresses("\"Doe, John\" <john@example.com>");
+        assertEquals(1, result.size());
+        assertEquals("john@example.com", result.get(0));
+    }
+
+    @Test
+    void testParseEmailAddresses_MultipleAddresses() {
+        final List<String> result = EmailUtils.parseEmailAddresses(
+                "user1@example.com, user2@example.com, user3@example.com");
+        assertEquals(3, result.size());
+        assertEquals("user1@example.com", result.get(0));
+        assertEquals("user2@example.com", result.get(1));
+        assertEquals("user3@example.com", result.get(2));
+    }
+
+    @Test
+    void testParseEmailAddresses_MultipleAddressesWithDisplayNames() {
+        final List<String> result = EmailUtils.parseEmailAddresses(
+                "John Doe <john@example.com>, \"Smith, Jane\" <jane@example.com>, Bob <bob@example.com>");
+        assertEquals(3, result.size());
+        assertEquals("john@example.com", result.get(0));
+        assertEquals("jane@example.com", result.get(1));
+        assertEquals("bob@example.com", result.get(2));
+    }
+
+    @Test
+    void testParseEmailAddresses_MixedFormat() {
+        final List<String> result = EmailUtils.parseEmailAddresses(
+                "user1@example.com, \"Doe, John\" <john@example.com>, user3@example.com");
+        assertEquals(3, result.size());
+        assertEquals("user1@example.com", result.get(0));
+        assertEquals("john@example.com", result.get(1));
+        assertEquals("user3@example.com", result.get(2));
+    }
+
+    @Test
+    void testParseEmailAddresses_WithWhitespace() {
+        final List<String> result = EmailUtils.parseEmailAddresses(
+                "  user1@example.com  ,  \"Doe, John\"  <  john@example.com  >  ,  user3@example.com  ");
+        assertEquals(3, result.size());
+        assertEquals("user1@example.com", result.get(0));
+        assertEquals("john@example.com", result.get(1));
+        assertEquals("user3@example.com", result.get(2));
+    }
+
+    @Test
+    void testParseEmailAddresses_InvalidAddresses() {
+        final List<String> result = EmailUtils.parseEmailAddresses(
+                "invalid-email, another-invalid, @example.com");
+        assertEquals(3, result.size());
+        assertEquals("invalid-email", result.get(0));
+        assertEquals("another-invalid", result.get(1));
+        assertEquals("@example.com", result.get(2));
     }
 }

@@ -22,8 +22,10 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.Collection;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
@@ -314,6 +316,90 @@ public final class EmailUtils {
      */
     public static String toLower(final String value) {
         return value.toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * Parses an RFC822 formatted email address list and returns a set of standard email addresses.
+     *
+     * @param addresses the RFC822 formatted email address list, may be {@code null}
+     * @return a List of standard email addresses (without display names), never {@code null}
+     * @since 2.0.0-M3
+     */
+    public static List<String> parseEmailAddresses(final String addresses) {
+        final List<String> result = new ArrayList<>();
+        if (isEmpty(addresses)) {
+            return result;
+        }
+
+        final String trimmed = addresses.trim();
+        if (trimmed.isEmpty()) {
+            return result;
+        }
+
+        final char[] chars = trimmed.toCharArray();
+        int start = 0;
+        boolean inQuotes = false;
+        boolean inAngleBrackets = false;
+        int angleBracketStart = -1;
+        int angleBracketEnd = -1;
+
+        for (int i = 0; i < chars.length; i++) {
+            final char c = chars[i];
+
+            if (c == '"') {
+                inQuotes = !inQuotes;
+            } else if (!inQuotes && c == '<') {
+                inAngleBrackets = true;
+                angleBracketStart = i + 1;
+            } else if (!inQuotes && inAngleBrackets && c == '>') {
+                inAngleBrackets = false;
+                angleBracketEnd = i;
+            } else if (!inQuotes && !inAngleBrackets && c == ',') {
+                // Found a separator, extract the email address
+                extractEmailAddress(chars, start, i, angleBracketStart, angleBracketEnd, result);
+                start = i + 1;
+                angleBracketStart = -1;
+                angleBracketEnd = -1;
+            }
+        }
+
+        // Process the last address
+        extractEmailAddress(chars, start, chars.length, angleBracketStart, angleBracketEnd, result);
+
+        return result;
+    }
+
+    /**
+     * Extracts an email address from a segment of characters.
+     *
+     * @param chars the character array
+     * @param start the start index (inclusive)
+     * @param end the end index (exclusive)
+     * @param angleBracketStart the start index of &lt; if present, otherwise -1
+     * @param angleBracketEnd the end index of &gt; if present, otherwise -1
+     * @param result the list to add the extracted email address to
+     */
+    private static void extractEmailAddress(
+            final char[] chars,
+            final int start,
+            final int end,
+            final int angleBracketStart,
+            final int angleBracketEnd,
+            final List<String> result) {
+        String email;
+
+        if (angleBracketStart != -1 && angleBracketEnd != -1) {
+            // Extract from within angle brackets
+            email = new String(chars, angleBracketStart, angleBracketEnd - angleBracketStart);
+        } else {
+            // Extract directly from the segment, skipping whitespace
+            email = new String(chars, start, end - start);
+        }
+
+        final String trimmedEmail = email.trim();
+        if (!trimmedEmail.isEmpty()) {
+            result.add(trimmedEmail);
+        }
     }
 
     /**
