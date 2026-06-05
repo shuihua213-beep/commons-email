@@ -1,0 +1,507 @@
+diff --git a/commons-email2-jakarta/src/main/java/org/apache/commons/mail2/jakarta/activation/PathDataSource.java b/commons-email2-jakarta/src/main/java/org/apache/commons/mail2/jakarta/activation/PathDataSource.java
+index 68fa491..a7750b8 100644
+--- a/commons-email2-jakarta/src/main/java/org/apache/commons/mail2/jakarta/activation/PathDataSource.java
++++ b/commons-email2-jakarta/src/main/java/org/apache/commons/mail2/jakarta/activation/PathDataSource.java
+@@ -17,13 +17,17 @@
+ 
+ package org.apache.commons.mail2.jakarta.activation;
+ 
++import java.io.Closeable;
+ import java.io.IOException;
+ import java.io.InputStream;
+ import java.io.OutputStream;
+ import java.nio.file.Files;
+ import java.nio.file.OpenOption;
+ import java.nio.file.Path;
++import java.util.Collections;
+ import java.util.Objects;
++import java.util.Set;
++import java.util.concurrent.ConcurrentHashMap;
+ 
+ import jakarta.activation.DataSource;
+ import jakarta.activation.FileTypeMap;
+@@ -37,7 +41,7 @@ import jakarta.activation.MimetypesFileTypeMap;
+  * @see jakarta.activation.MimetypesFileTypeMap
+  * @since 1.6.0
+  */
+-public final class PathDataSource implements DataSource {
++public final class PathDataSource implements DataSource, Closeable {
+ 
+     /**
+      * The source.
+@@ -54,6 +58,11 @@ public final class PathDataSource implements DataSource {
+      */
+     private final OpenOption[] options;
+ 
++    /**
++     * Tracks all opened input streams for proper resource cleanup.
++     */
++    private final Set<InputStream> openInputStreams = Collections.newSetFromMap(new ConcurrentHashMap<>());
++
+     /**
+      * Creates a new instance from a Path.
+      * <p>
+@@ -107,7 +116,9 @@ public final class PathDataSource implements DataSource {
+      */
+     @Override
+     public InputStream getInputStream() throws IOException {
+-        return Files.newInputStream(path, options);
++        final InputStream inputStream = Files.newInputStream(path, options);
++        openInputStreams.add(inputStream);
++        return inputStream;
+     }
+ 
+     /**
+@@ -141,4 +152,31 @@ public final class PathDataSource implements DataSource {
+         return path;
+     }
+ 
++    /**
++     * Closes all opened input streams to release file handles.
++     * <p>
++     * This method should be called after the email has been sent to ensure all file handles are properly released,
++     * especially in scenarios with large numbers of attachments.
++     * </p>
++     *
++     * @throws IOException if an I/O error occurs while closing streams
++     */
++    @Override
++    public void close() throws IOException {
++        IOException firstException = null;
++        for (final InputStream inputStream : openInputStreams) {
++            try {
++                inputStream.close();
++            } catch (final IOException e) {
++                if (firstException == null) {
++                    firstException = e;
++                }
++            }
++        }
++        openInputStreams.clear();
++        if (firstException != null) {
++            throw firstException;
++        }
++    }
++
+ }
+diff --git a/commons-email2-jakarta/src/test/java/org/apache/commons/mail2/jakarta/activation/PathDataSourceTest.java b/commons-email2-jakarta/src/test/java/org/apache/commons/mail2/jakarta/activation/PathDataSourceTest.java
+new file mode 100644
+index 0000000..c57579b
+--- /dev/null
++++ b/commons-email2-jakarta/src/test/java/org/apache/commons/mail2/jakarta/activation/PathDataSourceTest.java
+@@ -0,0 +1,163 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *     https://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.apache.commons.mail2.jakarta.activation;
++
++import static org.junit.jupiter.api.Assertions.assertEquals;
++import static org.junit.jupiter.api.Assertions.assertFalse;
++import static org.junit.jupiter.api.Assertions.assertThrows;
++import static org.junit.jupiter.api.Assertions.assertTrue;
++
++import java.io.File;
++import java.io.IOException;
++import java.io.InputStream;
++import java.nio.file.Files;
++import java.nio.file.Path;
++
++import org.junit.jupiter.api.BeforeEach;
++import org.junit.jupiter.api.Test;
++import org.junit.jupiter.api.io.TempDir;
++
++class PathDataSourceTest {
++
++    @TempDir
++    Path tempDir;
++
++    private Path testFile;
++
++    @BeforeEach
++    void setUp() throws IOException {
++        testFile = tempDir.resolve("test-attachment.txt");
++        Files.writeString(testFile, "Test attachment content for resource leak testing");
++    }
++
++    @Test
++    void testCloseReleasesAllStreams() throws IOException {
++        final PathDataSource dataSource = new PathDataSource(testFile);
++
++        final InputStream stream1 = dataSource.getInputStream();
++        final InputStream stream2 = dataSource.getInputStream();
++        final InputStream stream3 = dataSource.getInputStream();
++
++        assertFalse(stream1.read() == -1, "Stream 1 should have content");
++        stream1.skipNBytes(Long.MAX_VALUE > Files.size(testFile) ? Files.size(testFile) : Long.MAX_VALUE);
++
++        dataSource.close();
++
++        assertTrue(stream1.available() == 0 || !isStreamOpen(stream1), "Stream 1 should be closed after close()");
++        assertTrue(stream2.available() == 0 || !isStreamOpen(stream2), "Stream 2 should be closed after close()");
++        assertTrue(stream3.available() == 0 || !isStreamOpen(stream3), "Stream 3 should be closed after close()");
++    }
++
++    @Test
++    void testFileCanBeDeletedAfterClose() throws IOException {
++        final PathDataSource dataSource = new PathDataSource(testFile);
++
++        for (int i = 0; i < 10; i++) {
++            try (InputStream is = dataSource.getInputStream()) {
++                is.readAllBytes();
++            }
++        }
++
++        dataSource.close();
++
++        assertTrue(Files.deleteIfExists(testFile), "File should be deletable after PathDataSource.close()");
++        assertFalse(Files.exists(testFile), "File should not exist after deletion");
++    }
++
++    @Test
++    void testRepeatedReadsDoNotLeakHandles() throws IOException {
++        final Path testAttachment = tempDir.resolve("repeated-attachment.bin");
++        final byte[] testData = new byte[1024];
++        for (int i = 0; i < testData.length; i++) {
++            testData[i] = (byte) (i % 256);
++        }
++        Files.write(testAttachment, testData);
++
++        final PathDataSource dataSource = new PathDataSource(testAttachment);
++
++        for (int i = 0; i < 100; i++) {
++            final InputStream is = dataSource.getInputStream();
++            final byte[] buffer = is.readAllBytes();
++            assertEquals(testData.length, buffer.length, "Iteration " + i + ": should read full content");
++        }
++
++        dataSource.close();
++
++        final File file = testAttachment.toFile();
++        assertTrue(file.delete(), "File should be deletable after 100 reads and close()");
++    }
++
++    @Test
++    void testCloseIsIdempotent() throws IOException {
++        final PathDataSource dataSource = new PathDataSource(testFile);
++
++        dataSource.getInputStream();
++        dataSource.getInputStream();
++
++        dataSource.close();
++        dataSource.close();
++        dataSource.close();
++    }
++
++    @Test
++    void testGetInputStreamReturnsNewStreamEachTime() throws IOException {
++        final PathDataSource dataSource = new PathDataSource(testFile);
++
++        final InputStream stream1 = dataSource.getInputStream();
++        final InputStream stream2 = dataSource.getInputStream();
++
++        assertFalse(stream1 == stream2, "Each call to getInputStream() should return a new stream");
++
++        stream1.close();
++        stream2.close();
++        dataSource.close();
++    }
++
++    @Test
++    void testGetContentType() {
++        final Path textFile = tempDir.resolve("document.txt");
++        try {
++            Files.writeString(textFile, "text content");
++            final PathDataSource dataSource = new PathDataSource(textFile);
++            final String contentType = dataSource.getContentType();
++            assertTrue(contentType != null && !contentType.isEmpty(), "Content type should not be null or empty");
++        } finally {
++            Files.deleteIfExists(textFile);
++        }
++    }
++
++    @Test
++    void testGetName() {
++        final PathDataSource dataSource = new PathDataSource(testFile);
++        assertEquals("test-attachment.txt", dataSource.getName(), "getName() should return the file name");
++    }
++
++    @Test
++    void testGetPath() {
++        final PathDataSource dataSource = new PathDataSource(testFile);
++        assertEquals(testFile, dataSource.getPath(), "getPath() should return the original path");
++    }
++
++    private boolean isStreamOpen(final InputStream stream) {
++        try {
++            stream.read();
++            return true;
++        } catch (final IOException e) {
++            return false;
++        }
++    }
++}
+diff --git a/commons-email2-javax/src/main/java/org/apache/commons/mail2/javax/activation/PathDataSource.java b/commons-email2-javax/src/main/java/org/apache/commons/mail2/javax/activation/PathDataSource.java
+index 7213c1d..26125e1 100644
+--- a/commons-email2-javax/src/main/java/org/apache/commons/mail2/javax/activation/PathDataSource.java
++++ b/commons-email2-javax/src/main/java/org/apache/commons/mail2/javax/activation/PathDataSource.java
+@@ -17,13 +17,17 @@
+ 
+ package org.apache.commons.mail2.javax.activation;
+ 
++import java.io.Closeable;
+ import java.io.IOException;
+ import java.io.InputStream;
+ import java.io.OutputStream;
+ import java.nio.file.Files;
+ import java.nio.file.OpenOption;
+ import java.nio.file.Path;
++import java.util.Collections;
+ import java.util.Objects;
++import java.util.Set;
++import java.util.concurrent.ConcurrentHashMap;
+ 
+ import javax.activation.DataSource;
+ import javax.activation.FileTypeMap;
+@@ -37,7 +41,7 @@ import javax.activation.MimetypesFileTypeMap;
+  * @see javax.activation.MimetypesFileTypeMap
+  * @since 1.6.0
+  */
+-public final class PathDataSource implements DataSource {
++public final class PathDataSource implements DataSource, Closeable {
+ 
+     /**
+      * The source.
+@@ -54,6 +58,11 @@ public final class PathDataSource implements DataSource {
+      */
+     private final OpenOption[] options;
+ 
++    /**
++     * Tracks all opened input streams for proper resource cleanup.
++     */
++    private final Set<InputStream> openInputStreams = Collections.newSetFromMap(new ConcurrentHashMap<>());
++
+     /**
+      * Creates a new instance from a Path.
+      * <p>
+@@ -107,7 +116,9 @@ public final class PathDataSource implements DataSource {
+      */
+     @Override
+     public InputStream getInputStream() throws IOException {
+-        return Files.newInputStream(path, options);
++        final InputStream inputStream = Files.newInputStream(path, options);
++        openInputStreams.add(inputStream);
++        return inputStream;
+     }
+ 
+     /**
+@@ -141,4 +152,31 @@ public final class PathDataSource implements DataSource {
+         return path;
+     }
+ 
++    /**
++     * Closes all opened input streams to release file handles.
++     * <p>
++     * This method should be called after the email has been sent to ensure all file handles are properly released,
++     * especially in scenarios with large numbers of attachments.
++     * </p>
++     *
++     * @throws IOException if an I/O error occurs while closing streams
++     */
++    @Override
++    public void close() throws IOException {
++        IOException firstException = null;
++        for (final InputStream inputStream : openInputStreams) {
++            try {
++                inputStream.close();
++            } catch (final IOException e) {
++                if (firstException == null) {
++                    firstException = e;
++                }
++            }
++        }
++        openInputStreams.clear();
++        if (firstException != null) {
++            throw firstException;
++        }
++    }
++
+ }
+diff --git a/commons-email2-javax/src/test/java/org/apache/commons/mail2/javax/activation/PathDataSourceTest.java b/commons-email2-javax/src/test/java/org/apache/commons/mail2/javax/activation/PathDataSourceTest.java
+new file mode 100644
+index 0000000..21d3819
+--- /dev/null
++++ b/commons-email2-javax/src/test/java/org/apache/commons/mail2/javax/activation/PathDataSourceTest.java
+@@ -0,0 +1,160 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *     https://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.apache.commons.mail2.javax.activation;
++
++import static org.junit.jupiter.api.Assertions.assertEquals;
++import static org.junit.jupiter.api.Assertions.assertFalse;
++import static org.junit.jupiter.api.Assertions.assertTrue;
++
++import java.io.IOException;
++import java.io.InputStream;
++import java.nio.file.Files;
++import java.nio.file.Path;
++
++import org.junit.jupiter.api.BeforeEach;
++import org.junit.jupiter.api.Test;
++import org.junit.jupiter.api.io.TempDir;
++
++class PathDataSourceTest {
++
++    @TempDir
++    Path tempDir;
++
++    private Path testFile;
++
++    @BeforeEach
++    void setUp() throws IOException {
++        testFile = tempDir.resolve("test-attachment.txt");
++        Files.writeString(testFile, "Test attachment content for resource leak testing");
++    }
++
++    @Test
++    void testCloseReleasesAllStreams() throws IOException {
++        final PathDataSource dataSource = new PathDataSource(testFile);
++
++        final InputStream stream1 = dataSource.getInputStream();
++        final InputStream stream2 = dataSource.getInputStream();
++        final InputStream stream3 = dataSource.getInputStream();
++
++        assertFalse(stream1.read() == -1, "Stream 1 should have content");
++        stream1.skipNBytes(Long.MAX_VALUE > Files.size(testFile) ? Files.size(testFile) : Long.MAX_VALUE);
++
++        dataSource.close();
++
++        assertTrue(stream1.available() == 0 || !isStreamOpen(stream1), "Stream 1 should be closed after close()");
++        assertTrue(stream2.available() == 0 || !isStreamOpen(stream2), "Stream 2 should be closed after close()");
++        assertTrue(stream3.available() == 0 || !isStreamOpen(stream3), "Stream 3 should be closed after close()");
++    }
++
++    @Test
++    void testFileCanBeDeletedAfterClose() throws IOException {
++        final PathDataSource dataSource = new PathDataSource(testFile);
++
++        for (int i = 0; i < 10; i++) {
++            try (InputStream is = dataSource.getInputStream()) {
++                is.readAllBytes();
++            }
++        }
++
++        dataSource.close();
++
++        assertTrue(Files.deleteIfExists(testFile), "File should be deletable after PathDataSource.close()");
++        assertFalse(Files.exists(testFile), "File should not exist after deletion");
++    }
++
++    @Test
++    void testRepeatedReadsDoNotLeakHandles() throws IOException {
++        final Path testAttachment = tempDir.resolve("repeated-attachment.bin");
++        final byte[] testData = new byte[1024];
++        for (int i = 0; i < testData.length; i++) {
++            testData[i] = (byte) (i % 256);
++        }
++        Files.write(testAttachment, testData);
++
++        final PathDataSource dataSource = new PathDataSource(testAttachment);
++
++        for (int i = 0; i < 100; i++) {
++            final InputStream is = dataSource.getInputStream();
++            final byte[] buffer = is.readAllBytes();
++            assertEquals(testData.length, buffer.length, "Iteration " + i + ": should read full content");
++        }
++
++        dataSource.close();
++
++        assertTrue(Files.deleteIfExists(testAttachment), "File should be deletable after 100 reads and close()");
++    }
++
++    @Test
++    void testCloseIsIdempotent() throws IOException {
++        final PathDataSource dataSource = new PathDataSource(testFile);
++
++        dataSource.getInputStream();
++        dataSource.getInputStream();
++
++        dataSource.close();
++        dataSource.close();
++        dataSource.close();
++    }
++
++    @Test
++    void testGetInputStreamReturnsNewStreamEachTime() throws IOException {
++        final PathDataSource dataSource = new PathDataSource(testFile);
++
++        final InputStream stream1 = dataSource.getInputStream();
++        final InputStream stream2 = dataSource.getInputStream();
++
++        assertFalse(stream1 == stream2, "Each call to getInputStream() should return a new stream");
++
++        stream1.close();
++        stream2.close();
++        dataSource.close();
++    }
++
++    @Test
++    void testGetContentType() {
++        final Path textFile = tempDir.resolve("document.txt");
++        try {
++            Files.writeString(textFile, "text content");
++            final PathDataSource dataSource = new PathDataSource(textFile);
++            final String contentType = dataSource.getContentType();
++            assertTrue(contentType != null && !contentType.isEmpty(), "Content type should not be null or empty");
++        } finally {
++            Files.deleteIfExists(textFile);
++        }
++    }
++
++    @Test
++    void testGetName() {
++        final PathDataSource dataSource = new PathDataSource(testFile);
++        assertEquals("test-attachment.txt", dataSource.getName(), "getName() should return the file name");
++    }
++
++    @Test
++    void testGetPath() {
++        final PathDataSource dataSource = new PathDataSource(testFile);
++        assertEquals(testFile, dataSource.getPath(), "getPath() should return the original path");
++    }
++
++    private boolean isStreamOpen(final InputStream stream) {
++        try {
++            stream.read();
++            return true;
++        } catch (final IOException e) {
++            return false;
++        }
++    }
++}
