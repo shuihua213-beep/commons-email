@@ -17,13 +17,17 @@
 
 package org.apache.commons.mail2.jakarta.activation;
 
+import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.OpenOption;
 import java.nio.file.Path;
+import java.util.Collections;
 import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 import jakarta.activation.DataSource;
 import jakarta.activation.FileTypeMap;
@@ -37,7 +41,7 @@ import jakarta.activation.MimetypesFileTypeMap;
  * @see jakarta.activation.MimetypesFileTypeMap
  * @since 1.6.0
  */
-public final class PathDataSource implements DataSource {
+public final class PathDataSource implements DataSource, Closeable {
 
     /**
      * The source.
@@ -53,6 +57,11 @@ public final class PathDataSource implements DataSource {
      * NIO options to open the source Path.
      */
     private final OpenOption[] options;
+
+    /**
+     * Tracks all opened input streams for proper resource cleanup.
+     */
+    private final Set<InputStream> openInputStreams = Collections.newSetFromMap(new ConcurrentHashMap<>());
 
     /**
      * Creates a new instance from a Path.
@@ -107,7 +116,9 @@ public final class PathDataSource implements DataSource {
      */
     @Override
     public InputStream getInputStream() throws IOException {
-        return Files.newInputStream(path, options);
+        final InputStream inputStream = Files.newInputStream(path, options);
+        openInputStreams.add(inputStream);
+        return inputStream;
     }
 
     /**
@@ -139,6 +150,33 @@ public final class PathDataSource implements DataSource {
      */
     public Path getPath() {
         return path;
+    }
+
+    /**
+     * Closes all opened input streams to release file handles.
+     * <p>
+     * This method should be called after the email has been sent to ensure all file handles are properly released,
+     * especially in scenarios with large numbers of attachments.
+     * </p>
+     *
+     * @throws IOException if an I/O error occurs while closing streams
+     */
+    @Override
+    public void close() throws IOException {
+        IOException firstException = null;
+        for (final InputStream inputStream : openInputStreams) {
+            try {
+                inputStream.close();
+            } catch (final IOException e) {
+                if (firstException == null) {
+                    firstException = e;
+                }
+            }
+        }
+        openInputStreams.clear();
+        if (firstException != null) {
+            throw firstException;
+        }
     }
 
 }
