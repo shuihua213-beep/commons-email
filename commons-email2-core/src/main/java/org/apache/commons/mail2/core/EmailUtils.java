@@ -22,8 +22,11 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
@@ -210,6 +213,86 @@ public final class EmailUtils {
      */
     public static boolean isNotEmpty(final String str) {
         return str != null && !str.isEmpty();
+    }
+
+    /**
+     * Extracts the standard email address from an RFC822 formatted string.
+     *
+     * @param part the RFC822 formatted string.
+     * @return the standard email address, or null if it cannot be extracted.
+     */
+    private static String extractEmail(String part) {
+        part = part.trim();
+        if (isEmpty(part)) {
+            return null;
+        }
+        final int start = part.indexOf('<');
+        final int end = part.lastIndexOf('>');
+        if (start != -1 && end != -1 && start < end) {
+            if (end < part.length() - 1) {
+                final String after = part.substring(end + 1).trim();
+                if (!after.isEmpty()) {
+                    return null;
+                }
+            }
+            final String email = part.substring(start + 1, end).trim();
+            if (email.contains("<") || email.contains(">") || email.contains(" ")) {
+                return null;
+            }
+            return email;
+        } else if (start != -1 || end != -1) {
+            return null;
+        }
+        final String[] tokens = part.split("\\s+");
+        if (tokens.length > 1) {
+            return null;
+        }
+        return part;
+    }
+
+    /**
+     * Parses a comma-separated list of RFC822 formatted email addresses and returns a collection of standard email addresses.
+     * Extracts the actual email address from formats like "Name" &lt;email@domain&gt;.
+     *
+     * @param addressList the comma-separated list of addresses.
+     * @return a list of standard email addresses.
+     * @throws IllegalArgumentException if an address is invalid.
+     */
+    public static List<String> parseRfc822AddressList(final String addressList) {
+        if (isEmpty(addressList)) {
+            return Collections.emptyList();
+        }
+        final List<String> result = new ArrayList<>();
+        boolean inQuotes = false;
+        final StringBuilder current = new StringBuilder();
+        for (int i = 0; i < addressList.length(); i++) {
+            final char c = addressList.charAt(i);
+            if (c == '"') {
+                inQuotes = !inQuotes;
+                current.append(c);
+            } else if (c == ',' && !inQuotes) {
+                final String address = extractEmail(current.toString());
+                if (isNotEmpty(address)) {
+                    result.add(address);
+                } else {
+                    throw new IllegalArgumentException("Invalid RFC822 email address: " + current);
+                }
+                current.setLength(0);
+            } else {
+                current.append(c);
+            }
+        }
+        if (current.length() > 0) {
+            if (!current.toString().trim().isEmpty()) {
+                final String address = extractEmail(current.toString());
+                if (isNotEmpty(address)) {
+                    result.add(address);
+                } else {
+                    throw new IllegalArgumentException("Invalid RFC822 email address: " + current);
+                }
+            }
+        }
+        return result;
     }
 
     /**
