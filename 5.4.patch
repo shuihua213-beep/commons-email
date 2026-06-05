@@ -1,0 +1,114 @@
+diff --git a/commons-email2-jakarta/pom.xml b/commons-email2-jakarta/pom.xml
+index 821d901..8c7cdf6 100644
+--- a/commons-email2-jakarta/pom.xml
++++ b/commons-email2-jakarta/pom.xml
+@@ -34,7 +34,7 @@
+     <dependency>    
+       <groupId>org.apache.commons</groupId>    
+       <artifactId>commons-email2-core</artifactId>    
+-      <version>2.0.0-M2-SNAPSHOT</version>
++      <version>${project.version}</version>
+     </dependency>
+     <dependency>
+       <groupId>org.eclipse.angus</groupId>
+diff --git a/commons-email2-javax/pom.xml b/commons-email2-javax/pom.xml
+index a2f2782..bd9fd7f 100644
+--- a/commons-email2-javax/pom.xml
++++ b/commons-email2-javax/pom.xml
+@@ -34,7 +34,7 @@
+     <dependency>    
+       <groupId>org.apache.commons</groupId>    
+       <artifactId>commons-email2-core</artifactId>    
+-      <version>2.0.0-M2-SNAPSHOT</version>
++      <version>${project.version}</version>
+     </dependency>
+     <dependency>
+       <groupId>com.sun.mail</groupId>
+diff --git a/pom.xml b/pom.xml
+index 7ad629f..d975362 100644
+--- a/pom.xml
++++ b/pom.xml
+@@ -188,6 +188,83 @@
+           </execution>
+         </executions>
+       </plugin>
++      <plugin>
++        <groupId>org.apache.maven.plugins</groupId>
++        <artifactId>maven-enforcer-plugin</artifactId>
++        <version>3.5.0</version>
++        <executions>
++          <execution>
++            <id>enforce-dependency-version-consistency</id>
++            <goals>
++              <goal>enforce</goal>
++            </goals>
++            <phase>validate</phase>
++            <configuration>
++              <rules>
++                <dependencyConvergence/>
++                <evaluateBeanshell>
++                  <condition>
++                    import org.apache.maven.project.MavenProject;
++                    import org.apache.maven.model.Dependency;
++
++                    java.util.Map projectsMap = new java.util.HashMap();
++                    java.util.List allProjects = session.getAllProjects();
++                    for (int i = 0; i &lt; allProjects.size(); i++) {
++                        MavenProject p = (MavenProject) allProjects.get(i);
++                        projectsMap.put(p.getArtifactId(), p);
++                    }
++
++                    MavenProject jakarta = (MavenProject) projectsMap.get("commons-email2-jakarta");
++                    MavenProject javax = (MavenProject) projectsMap.get("commons-email2-javax");
++
++                    if (jakarta == null || javax == null) {
++                        return true;
++                    }
++
++                    java.util.List jakartaDeps = jakarta.getDependencies();
++                    java.util.List javaxDeps = javax.getDependencies();
++
++                    java.util.Map jakartaDepMap = new java.util.HashMap();
++                    for (int i = 0; i &lt; jakartaDeps.size(); i++) {
++                        Dependency d = (Dependency) jakartaDeps.get(i);
++                        String key = d.getGroupId() + ":" + d.getArtifactId();
++                        jakartaDepMap.put(key, d.getVersion());
++                    }
++
++                    java.util.Map javaxDepMap = new java.util.HashMap();
++                    for (int i = 0; i &lt; javaxDeps.size(); i++) {
++                        Dependency d = (Dependency) javaxDeps.get(i);
++                        String key = d.getGroupId() + ":" + d.getArtifactId();
++                        javaxDepMap.put(key, d.getVersion());
++                    }
++
++                    boolean consistent = true;
++                    java.util.Set jakartaKeys = jakartaDepMap.keySet();
++                    java.util.Iterator iter = jakartaKeys.iterator();
++                    while (iter.hasNext()) {
++                        String key = (String) iter.next();
++                        if (javaxDepMap.containsKey(key)) {
++                            String jakartaVer = (String) jakartaDepMap.get(key);
++                            String javaxVer = (String) javaxDepMap.get(key);
++                            if (jakartaVer != null && javaxVer != null && !jakartaVer.equals(javaxVer)) {
++                                log.error("Version mismatch for " + key + ": Jakarta=" + jakartaVer + " vs Javax=" + javaxVer);
++                                consistent = false;
++                            }
++                        }
++                    }
++
++                    if (!consistent) {
++                        throw new Exception("Dependency version mismatch between Jakarta and Javax modules! Build failed.");
++                    }
++
++                    return true;
++                  </condition>
++                </evaluateBeanshell>
++              </rules>
++            </configuration>
++          </execution>
++        </executions>
++      </plugin>
+     </plugins>
+   </build>
+   <distributionManagement>
