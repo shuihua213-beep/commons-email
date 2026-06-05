@@ -24,10 +24,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.BitSet;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Random;
+import java.util.Set;
 
 /**
  * Utility methods used by commons-email.
@@ -314,6 +316,97 @@ public final class EmailUtils {
      */
     public static String toLower(final String value) {
         return value.toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * Parses an RFC 822 format recipient list and returns a set of standard email addresses.
+     * <p>
+     * Supports the following address formats:
+     * </p>
+     * <ul>
+     *   <li>{@code user@example.com} - simple address</li>
+     *   <li>{@code User Name &lt;user@example.com&gt;} - address with display name</li>
+     *   <li>{@code "User Name" &lt;user@example.com&gt;} - address with quoted display name</li>
+     *   <li>Comma-separated lists of the above</li>
+     * </ul>
+     * <p>
+     * Addresses that do not contain an {@code @} character are considered invalid and are silently skipped.
+     * </p>
+     *
+     * @param recipientList the RFC 822 format recipient list, may be {@code null}
+     * @return an unmodifiable set of parsed email addresses, never {@code null}
+     * @since 2.0.0
+     */
+    public static Set<String> parseRfc822Addresses(final String recipientList) {
+        final Set<String> addresses = new HashSet<>();
+        if (isEmpty(recipientList)) {
+            return addresses;
+        }
+        final int length = recipientList.length();
+        int pos = 0;
+        while (pos < length) {
+            pos = skipWhitespace(recipientList, pos);
+            if (pos >= length) {
+                break;
+            }
+            final StringBuilder segment = new StringBuilder();
+            boolean inQuoted = false;
+            boolean inAngle = false;
+            while (pos < length) {
+                final char ch = recipientList.charAt(pos);
+                if (ch == '"' && !inAngle) {
+                    inQuoted = !inQuoted;
+                    segment.append(ch);
+                    pos++;
+                } else if (ch == '<' && !inQuoted) {
+                    inAngle = true;
+                    segment.append(ch);
+                    pos++;
+                } else if (ch == '>' && inAngle && !inQuoted) {
+                    inAngle = false;
+                    segment.append(ch);
+                    pos++;
+                } else if (ch == ',' && !inQuoted && !inAngle) {
+                    pos++;
+                    break;
+                } else {
+                    segment.append(ch);
+                    pos++;
+                }
+            }
+            final String extracted = extractAddress(segment.toString().trim());
+            if (extracted != null) {
+                addresses.add(extracted);
+            }
+        }
+        return addresses;
+    }
+
+    private static String extractAddress(final String segment) {
+        if (isEmpty(segment)) {
+            return null;
+        }
+        final int openAngle = segment.indexOf('<');
+        final int closeAngle = segment.indexOf('>');
+        if (openAngle >= 0 && closeAngle > openAngle) {
+            return segment.substring(openAngle + 1, closeAngle).trim();
+        }
+        if (openAngle >= 0 || closeAngle >= 0) {
+            return null;
+        }
+        final String trimmed = segment.trim();
+        if (trimmed.indexOf('@') < 0) {
+            return null;
+        }
+        return trimmed;
+    }
+
+    private static int skipWhitespace(final String str, final int pos) {
+        int i = pos;
+        while (i < str.length() && Character.isWhitespace(str.charAt(i))) {
+            i++;
+        }
+        return i;
     }
 
     /**
