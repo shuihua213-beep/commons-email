@@ -16,10 +16,9 @@
  */
 package org.apache.commons.mail2.javax.util;
 
-import java.net.IDN;
-import java.util.function.Function;
-
 import javax.mail.internet.InternetAddress;
+
+import org.apache.commons.mail2.core.IDNEmailAddressConverterUtil;
 
 /**
  * Converts email addresses containing International Domain Names into an ASCII representation suitable for sending an email.
@@ -40,28 +39,6 @@ public class IDNEmailAddressConverter {
     }
 
     /**
-     * Extracts the domain part of the email address.
-     *
-     * @param email email address.
-     * @param idx   index of '@' character.
-     * @return domain part of email
-     */
-    private String getDomainPart(final String email, final int idx) {
-        return email.substring(idx + 1);
-    }
-
-    /**
-     * Extracts the local part of the email address.
-     *
-     * @param email email address.
-     * @param idx   index of '@' character.
-     * @return local part of email
-     */
-    private String getLocalPart(final String email, final int idx) {
-        return email.substring(0, idx);
-    }
-
-    /**
      * Converts an email address to its ASCII representation using "Punycode".
      *
      * @param email email address.
@@ -69,15 +46,7 @@ public class IDNEmailAddressConverter {
      * @throws IllegalArgumentException if the domain doesn't conform to RFC 3490 specification
      */
     public String toASCII(final String email) {
-        return toString(email, IDN::toASCII);
-    }
-
-    private String toString(final String email, final Function<String, String> converter) {
-        final int idx = email == null ? -1 : email.indexOf('@');
-        if (idx < 0) {
-            return email;
-        }
-        return getLocalPart(email, idx) + '@' + converter.apply(getDomainPart(email, idx));
+        return IDNEmailAddressConverterUtil.toASCII(email);
     }
 
     /**
@@ -97,6 +66,6 @@ public class IDNEmailAddressConverter {
      * @return The Unicode representation
      */
     String toUnicode(final String email) {
-        return toString(email, IDN::toUnicode);
+        return IDNEmailAddressConverterUtil.toUnicode(email);
     }
 }

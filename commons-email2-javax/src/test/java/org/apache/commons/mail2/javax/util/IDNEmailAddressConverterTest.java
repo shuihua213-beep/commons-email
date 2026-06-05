@@ -29,6 +29,9 @@ class IDNEmailAddressConverterTest {
     private static final String CZECH_IDN_EMAIL_ADDRESS = "noreply@\u010Desk\u00E1republika.icom.museum";
     private static final String RUSSIAN_IDN_EMAIL_ADDRESS = "noreply@\u0440\u043E\u0441\u0441\u0438\u044F.\u0438\u043A\u043E\u043C.museum";
 
+    private static final String AUSTRIAN_IDN_EMAIL_ADDRESS_ASCII = "noreply@xn--dmin-moa0i.example";
+    private static final String RUSSIAN_IDN_EMAIL_ADDRESS_ASCII = "noreply@xn--h1alffa9f.xn--h1aegh.museum";
+
     private static final String GERMAN_IDN_EMAIL_NAME = "noreply@d\u00F6m\u00E4in.example";
 
     private static final String[] IDN_EMAIL_ADDRESSES = { AUSTRIAN_IDN_EMAIL_ADDRESS, CZECH_IDN_EMAIL_ADDRESS, RUSSIAN_IDN_EMAIL_ADDRESS };
@@ -48,8 +51,8 @@ class IDNEmailAddressConverterTest {
 
     @Test
     void testIDNEmailAddressToAsciiConversion() {
-        assertEquals("noreply@xn--dmin-moa0i.example", idnEmailConverter.toASCII(AUSTRIAN_IDN_EMAIL_ADDRESS));
-        assertEquals("noreply@xn--h1alffa9f.xn--h1aegh.museum", idnEmailConverter.toASCII(RUSSIAN_IDN_EMAIL_ADDRESS));
+        assertEquals(AUSTRIAN_IDN_EMAIL_ADDRESS_ASCII, idnEmailConverter.toASCII(AUSTRIAN_IDN_EMAIL_ADDRESS));
+        assertEquals(RUSSIAN_IDN_EMAIL_ADDRESS_ASCII, idnEmailConverter.toASCII(RUSSIAN_IDN_EMAIL_ADDRESS));
     }
 
     @Test
@@ -62,8 +65,14 @@ class IDNEmailAddressConverterTest {
     }
 
     @Test
+    void testKnownAsciiValuesConvertBackToUnicode() {
+        assertEquals(AUSTRIAN_IDN_EMAIL_ADDRESS, idnEmailConverter.toUnicode(AUSTRIAN_IDN_EMAIL_ADDRESS_ASCII));
+        assertEquals(RUSSIAN_IDN_EMAIL_ADDRESS, idnEmailConverter.toUnicode(RUSSIAN_IDN_EMAIL_ADDRESS_ASCII));
+    }
+
+    @Test
     void testMultipleIDNEmailAddressToAsciiConversion() {
-        assertEquals("noreply@xn--dmin-moa0i.example", idnEmailConverter.toASCII(idnEmailConverter.toASCII(AUSTRIAN_IDN_EMAIL_ADDRESS)));
+        assertEquals(AUSTRIAN_IDN_EMAIL_ADDRESS_ASCII, idnEmailConverter.toASCII(idnEmailConverter.toASCII(AUSTRIAN_IDN_EMAIL_ADDRESS)));
     }
 
     @Test
