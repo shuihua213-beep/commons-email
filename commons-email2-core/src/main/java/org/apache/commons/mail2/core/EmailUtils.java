@@ -22,12 +22,17 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.Collection;
+import java.util.Collections;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Random;
+import java.util.Set;
 
 /**
  * Utility methods used by commons-email.
@@ -314,6 +319,116 @@ public final class EmailUtils {
      */
     public static String toLower(final String value) {
         return value.toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * Parses an RFC822 address list and returns the set of distinct email addresses.
+     * <p>
+     * Handles common RFC822 address formats including:
+     * </p>
+     * <ul>
+     *   <li>Plain address: {@code user@domain.com}</li>
+     *   <li>Address with display name: {@code John Doe <john@example.com>}</li>
+     *   <li>Quoted display name: {@code "Doe, John" <john@example.com>}</li>
+     *   <li>Multiple addresses separated by commas</li>
+     * </ul>
+     * <p>
+     * Invalid or malformed addresses are silently ignored. All returned addresses are normalized to lower case.
+     * </p>
+     *
+     * @param addressList the RFC822 address list to parse, may be null or empty
+     * @return a set of distinct, normalized email addresses, never null
+     * @since 2.0.0
+     */
+    public static Set<String> parseAddressList(final String addressList) {
+        if (isEmpty(addressList)) {
+            return Collections.emptySet();
+        }
+        final Set<String> result = new LinkedHashSet<>();
+        final List<String> parts = splitAddressList(addressList);
+        for (final String part : parts) {
+            final String address = extractAddress(part.trim());
+            if (isValidEmail(address)) {
+                result.add(address.toLowerCase(Locale.ROOT));
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Splits an RFC822 address list by commas, respecting quoted strings so that commas
+     * inside quotes are not treated as delimiters.
+     *
+     * @param addressList the raw address list string.
+     * @return a list of individual address parts.
+     */
+    private static List<String> splitAddressList(final String addressList) {
+        final List<String> parts = new ArrayList<>();
+        final int length = addressList.length();
+        boolean inQuotes = false;
+        int start = 0;
+        for (int i = 0; i < length; i++) {
+            final char c = addressList.charAt(i);
+            if (c == '"') {
+                if (!inQuotes || i + 1 >= length || addressList.charAt(i + 1) != '"') {
+                    inQuotes = !inQuotes;
+                }
+            } else if (c == ',' && !inQuotes) {
+                final String part = addressList.substring(start, i).trim();
+                if (!part.isEmpty()) {
+                    parts.add(part);
+                }
+                start = i + 1;
+            }
+        }
+        final String lastPart = addressList.substring(start).trim();
+        if (!lastPart.isEmpty()) {
+            parts.add(lastPart);
+        }
+        return parts;
+    }
+
+    /**
+     * Extracts the email address from an address part. If the part contains angle brackets,
+     * the content between the leftmost {@code <} and rightmost {@code >} is returned.
+     * Otherwise, the trimmed part itself is returned.
+     *
+     * @param part a single address part from the address list.
+     * @return the extracted email address string.
+     */
+    private static String extractAddress(final String part) {
+        final int ltIndex = part.indexOf('<');
+        final int gtIndex = part.lastIndexOf('>');
+        if (ltIndex >= 0 && gtIndex > ltIndex) {
+            return part.substring(ltIndex + 1, gtIndex).trim();
+        }
+        return part;
+    }
+
+    /**
+     * Performs a basic validation that the string looks like an email address.
+     * <p>
+     * A valid email address must contain exactly one {@code @}, have non-empty local-part and domain,
+     * and contain no whitespace.
+     * </p>
+     *
+     * @param address the address string to validate.
+     * @return {@code true} if the address passes basic validation.
+     */
+    private static boolean isValidEmail(final String address) {
+        if (address == null || address.isEmpty()) {
+            return false;
+        }
+        final int atIndex = address.indexOf('@');
+        if (atIndex <= 0 || atIndex != address.lastIndexOf('@')) {
+            return false;
+        }
+        if (address.indexOf(' ') >= 0 || address.indexOf('\t') >= 0) {
+            return false;
+        }
+        final String localPart = address.substring(0, atIndex);
+        final String domain = address.substring(atIndex + 1);
+        return !localPart.isEmpty() && !domain.isEmpty();
     }
 
     /**
