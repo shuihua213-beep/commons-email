@@ -23,6 +23,8 @@ import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.OpenOption;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 
 import jakarta.activation.DataSource;
@@ -37,22 +39,15 @@ import jakarta.activation.MimetypesFileTypeMap;
  * @see jakarta.activation.MimetypesFileTypeMap
  * @since 1.6.0
  */
-public final class PathDataSource implements DataSource {
+public final class PathDataSource implements DataSource, AutoCloseable {
 
-    /**
-     * The source.
-     */
     private final Path path;
 
-    /**
-     * Defaults to {@link FileTypeMap#getDefaultFileTypeMap()}.
-     */
     private final FileTypeMap typeMap;
 
-    /**
-     * NIO options to open the source Path.
-     */
     private final OpenOption[] options;
+
+    private final List<InputStream> streams = new ArrayList<>();
 
     /**
      * Creates a new instance from a Path.
@@ -102,12 +97,97 @@ public final class PathDataSource implements DataSource {
     /**
      * Gets an InputStream representing the data and will throw an IOException if it cannot do so. This method will return a new instance of InputStream
      * with each invocation.
+     * <p>
+     * The returned stream is tracked by this DataSource and will be closed when {@link #close()} is called.
+     * </p>
      *
      * @return an InputStream
      */
     @Override
     public InputStream getInputStream() throws IOException {
-        return Files.newInputStream(path, options);
+        final InputStream delegate = Files.newInputStream(path, options);
+        final InputStream tracked = new TrackedInputStream(delegate);
+        synchronized (streams) {
+            streams.add(tracked);
+        }
+        return tracked;
+    }
+
+    /**
+     * Closes all InputStreams that have been returned by {@link #getInputStream()} and not yet closed individually.
+     * After calling this method, the underlying file resources are released and the file can be deleted or moved.
+     *
+     * @throws IOException if an I/O error occurs while closing any stream
+     */
+    @Override
+    public void close() throws IOException {
+        synchronized (streams) {
+            IOException first = null;
+            for (final InputStream stream : streams) {
+                try {
+                    stream.close();
+                } catch (final IOException e) {
+                    if (first == null) {
+                        first = e;
+                    }
+                }
+            }
+            streams.clear();
+            if (first != null) {
+                throw first;
+            }
+        }
+    }
+
+    private final class TrackedInputStream extends InputStream {
+        private final InputStream delegate;
+
+        TrackedInputStream(final InputStream delegate) {
+            this.delegate = delegate;
+        }
+
+        @Override
+        public int read() throws IOException {
+            return delegate.read();
+        }
+
+        @Override
+        public int read(final byte[] b, final int off, final int len) throws IOException {
+            return delegate.read(b, off, len);
+        }
+
+        @Override
+        public long skip(final long n) throws IOException {
+            return delegate.skip(n);
+        }
+
+        @Override
+        public int available() throws IOException {
+            return delegate.available();
+        }
+
+        @Override
+        public void close() throws IOException {
+            synchronized (streams) {
+                streams.remove(this);
+            }
+            delegate.close();
+        }
+
+        @Override
+        public synchronized void mark(final int readlimit) {
+            delegate.mark(readlimit);
+        }
+
+        @Override
+        public synchronized void reset() throws IOException {
+            delegate.reset();
+        }
+
+        @Override
+        public boolean markSupported() {
+            return delegate.markSupported();
+        }
     }
 
     /**
