@@ -1,0 +1,280 @@
+diff --git a/commons-email2-core/src/main/java/org/apache/commons/mail2/core/IDNEmailAddressConverterUtil.java b/commons-email2-core/src/main/java/org/apache/commons/mail2/core/IDNEmailAddressConverterUtil.java
+new file mode 100644
+index 0000000..a7db299
+--- /dev/null
++++ b/commons-email2-core/src/main/java/org/apache/commons/mail2/core/IDNEmailAddressConverterUtil.java
+@@ -0,0 +1,50 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *     https://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.apache.commons.mail2.core;
++
++import java.net.IDN;
++import java.util.function.Function;
++
++public final class IDNEmailAddressConverterUtil {
++
++    private IDNEmailAddressConverterUtil() {
++    }
++
++    public static String toASCII(final String email) {
++        return toString(email, IDN::toASCII);
++    }
++
++    public static String toUnicode(final String email) {
++        return toString(email, IDN::toUnicode);
++    }
++
++    private static String getDomainPart(final String email, final int idx) {
++        return email.substring(idx + 1);
++    }
++
++    private static String getLocalPart(final String email, final int idx) {
++        return email.substring(0, idx);
++    }
++
++    private static String toString(final String email, final Function<String, String> converter) {
++        final int idx = email == null ? -1 : email.indexOf('@');
++        if (idx < 0) {
++            return email;
++        }
++        return getLocalPart(email, idx) + '@' + converter.apply(getDomainPart(email, idx));
++    }
++}
+diff --git a/commons-email2-jakarta/src/main/java/org/apache/commons/mail2/jakarta/util/IDNEmailAddressConverter.java b/commons-email2-jakarta/src/main/java/org/apache/commons/mail2/jakarta/util/IDNEmailAddressConverter.java
+index eb17e8d..e9699c8 100644
+--- a/commons-email2-jakarta/src/main/java/org/apache/commons/mail2/jakarta/util/IDNEmailAddressConverter.java
++++ b/commons-email2-jakarta/src/main/java/org/apache/commons/mail2/jakarta/util/IDNEmailAddressConverter.java
+@@ -16,8 +16,7 @@
+  */
+ package org.apache.commons.mail2.jakarta.util;
+ 
+-import java.net.IDN;
+-import java.util.function.Function;
++import org.apache.commons.mail2.core.IDNEmailAddressConverterUtil;
+ 
+ import jakarta.mail.internet.InternetAddress;
+ 
+@@ -39,28 +38,6 @@ public class IDNEmailAddressConverter {
+         // empty
+     }
+ 
+-    /**
+-     * Extracts the domain part of the email address.
+-     *
+-     * @param email email address.
+-     * @param idx   index of '@' character.
+-     * @return domain part of email
+-     */
+-    private String getDomainPart(final String email, final int idx) {
+-        return email.substring(idx + 1);
+-    }
+-
+-    /**
+-     * Extracts the local part of the email address.
+-     *
+-     * @param email email address.
+-     * @param idx   index of '@' character.
+-     * @return local part of email
+-     */
+-    private String getLocalPart(final String email, final int idx) {
+-        return email.substring(0, idx);
+-    }
+-
+     /**
+      * Converts an email address to its ASCII representation using "Punycode".
+      *
+@@ -69,15 +46,7 @@ public class IDNEmailAddressConverter {
+      * @throws IllegalArgumentException if the domain doesn't conform to RFC 3490 specification
+      */
+     public String toASCII(final String email) {
+-        return toString(email, IDN::toASCII);
+-    }
+-
+-    private String toString(final String email, final Function<String, String> converter) {
+-        final int idx = email == null ? -1 : email.indexOf('@');
+-        if (idx < 0) {
+-            return email;
+-        }
+-        return getLocalPart(email, idx) + '@' + converter.apply(getDomainPart(email, idx));
++        return IDNEmailAddressConverterUtil.toASCII(email);
+     }
+ 
+     /**
+@@ -97,6 +66,6 @@ public class IDNEmailAddressConverter {
+      * @return The Unicode representation
+      */
+     String toUnicode(final String email) {
+-        return toString(email, IDN::toUnicode);
++        return IDNEmailAddressConverterUtil.toUnicode(email);
+     }
+ }
+diff --git a/commons-email2-jakarta/src/test/java/org/apache/commons/mail2/jakarta/util/IDNEmailAddressConverterTest.java b/commons-email2-jakarta/src/test/java/org/apache/commons/mail2/jakarta/util/IDNEmailAddressConverterTest.java
+index 4688111..8a224d8 100644
+--- a/commons-email2-jakarta/src/test/java/org/apache/commons/mail2/jakarta/util/IDNEmailAddressConverterTest.java
++++ b/commons-email2-jakarta/src/test/java/org/apache/commons/mail2/jakarta/util/IDNEmailAddressConverterTest.java
+@@ -29,6 +29,9 @@ class IDNEmailAddressConverterTest {
+     private static final String CZECH_IDN_EMAIL_ADDRESS = "noreply@\u010Desk\u00E1republika.icom.museum";
+     private static final String RUSSIAN_IDN_EMAIL_ADDRESS = "noreply@\u0440\u043E\u0441\u0441\u0438\u044F.\u0438\u043A\u043E\u043C.museum";
+ 
++    private static final String AUSTRIAN_IDN_EMAIL_ADDRESS_ASCII = "noreply@xn--dmin-moa0i.example";
++    private static final String RUSSIAN_IDN_EMAIL_ADDRESS_ASCII = "noreply@xn--h1alffa9f.xn--h1aegh.museum";
++
+     private static final String GERMAN_IDN_EMAIL_NAME = "noreply@d\u00F6m\u00E4in.example";
+ 
+     private static final String[] IDN_EMAIL_ADDRESSES = { AUSTRIAN_IDN_EMAIL_ADDRESS, CZECH_IDN_EMAIL_ADDRESS, RUSSIAN_IDN_EMAIL_ADDRESS };
+@@ -48,8 +51,8 @@ class IDNEmailAddressConverterTest {
+ 
+     @Test
+     void testIDNEmailAddressToAsciiConversion() {
+-        assertEquals("noreply@xn--dmin-moa0i.example", idnEmailConverter.toASCII(AUSTRIAN_IDN_EMAIL_ADDRESS));
+-        assertEquals("noreply@xn--h1alffa9f.xn--h1aegh.museum", idnEmailConverter.toASCII(RUSSIAN_IDN_EMAIL_ADDRESS));
++        assertEquals(AUSTRIAN_IDN_EMAIL_ADDRESS_ASCII, idnEmailConverter.toASCII(AUSTRIAN_IDN_EMAIL_ADDRESS));
++        assertEquals(RUSSIAN_IDN_EMAIL_ADDRESS_ASCII, idnEmailConverter.toASCII(RUSSIAN_IDN_EMAIL_ADDRESS));
+     }
+ 
+     @Test
+@@ -61,9 +64,15 @@ class IDNEmailAddressConverterTest {
+         assertEquals(AUSTRIAN_IDN_EMAIL_ADDRESS, idnEmailConverter.toUnicode(addressWithPersonalName));
+     }
+ 
++    @Test
++    void testKnownAsciiValuesConvertBackToUnicode() {
++        assertEquals(AUSTRIAN_IDN_EMAIL_ADDRESS, idnEmailConverter.toUnicode(AUSTRIAN_IDN_EMAIL_ADDRESS_ASCII));
++        assertEquals(RUSSIAN_IDN_EMAIL_ADDRESS, idnEmailConverter.toUnicode(RUSSIAN_IDN_EMAIL_ADDRESS_ASCII));
++    }
++
+     @Test
+     void testMultipleIDNEmailAddressToAsciiConversion() {
+-        assertEquals("noreply@xn--dmin-moa0i.example", idnEmailConverter.toASCII(idnEmailConverter.toASCII(AUSTRIAN_IDN_EMAIL_ADDRESS)));
++        assertEquals(AUSTRIAN_IDN_EMAIL_ADDRESS_ASCII, idnEmailConverter.toASCII(idnEmailConverter.toASCII(AUSTRIAN_IDN_EMAIL_ADDRESS)));
+     }
+ 
+     @Test
+diff --git a/commons-email2-javax/src/main/java/org/apache/commons/mail2/javax/util/IDNEmailAddressConverter.java b/commons-email2-javax/src/main/java/org/apache/commons/mail2/javax/util/IDNEmailAddressConverter.java
+index c3a2ce5..06caf23 100644
+--- a/commons-email2-javax/src/main/java/org/apache/commons/mail2/javax/util/IDNEmailAddressConverter.java
++++ b/commons-email2-javax/src/main/java/org/apache/commons/mail2/javax/util/IDNEmailAddressConverter.java
+@@ -16,11 +16,10 @@
+  */
+ package org.apache.commons.mail2.javax.util;
+ 
+-import java.net.IDN;
+-import java.util.function.Function;
+-
+ import javax.mail.internet.InternetAddress;
+ 
++import org.apache.commons.mail2.core.IDNEmailAddressConverterUtil;
++
+ /**
+  * Converts email addresses containing International Domain Names into an ASCII representation suitable for sending an email.
+  *
+@@ -39,28 +38,6 @@ public class IDNEmailAddressConverter {
+         // empty
+     }
+ 
+-    /**
+-     * Extracts the domain part of the email address.
+-     *
+-     * @param email email address.
+-     * @param idx   index of '@' character.
+-     * @return domain part of email
+-     */
+-    private String getDomainPart(final String email, final int idx) {
+-        return email.substring(idx + 1);
+-    }
+-
+-    /**
+-     * Extracts the local part of the email address.
+-     *
+-     * @param email email address.
+-     * @param idx   index of '@' character.
+-     * @return local part of email
+-     */
+-    private String getLocalPart(final String email, final int idx) {
+-        return email.substring(0, idx);
+-    }
+-
+     /**
+      * Converts an email address to its ASCII representation using "Punycode".
+      *
+@@ -69,15 +46,7 @@ public class IDNEmailAddressConverter {
+      * @throws IllegalArgumentException if the domain doesn't conform to RFC 3490 specification
+      */
+     public String toASCII(final String email) {
+-        return toString(email, IDN::toASCII);
+-    }
+-
+-    private String toString(final String email, final Function<String, String> converter) {
+-        final int idx = email == null ? -1 : email.indexOf('@');
+-        if (idx < 0) {
+-            return email;
+-        }
+-        return getLocalPart(email, idx) + '@' + converter.apply(getDomainPart(email, idx));
++        return IDNEmailAddressConverterUtil.toASCII(email);
+     }
+ 
+     /**
+@@ -97,6 +66,6 @@ public class IDNEmailAddressConverter {
+      * @return The Unicode representation
+      */
+     String toUnicode(final String email) {
+-        return toString(email, IDN::toUnicode);
++        return IDNEmailAddressConverterUtil.toUnicode(email);
+     }
+ }
+diff --git a/commons-email2-javax/src/test/java/org/apache/commons/mail2/javax/util/IDNEmailAddressConverterTest.java b/commons-email2-javax/src/test/java/org/apache/commons/mail2/javax/util/IDNEmailAddressConverterTest.java
+index 7b91bec..ff9775c 100644
+--- a/commons-email2-javax/src/test/java/org/apache/commons/mail2/javax/util/IDNEmailAddressConverterTest.java
++++ b/commons-email2-javax/src/test/java/org/apache/commons/mail2/javax/util/IDNEmailAddressConverterTest.java
+@@ -29,6 +29,9 @@ class IDNEmailAddressConverterTest {
+     private static final String CZECH_IDN_EMAIL_ADDRESS = "noreply@\u010Desk\u00E1republika.icom.museum";
+     private static final String RUSSIAN_IDN_EMAIL_ADDRESS = "noreply@\u0440\u043E\u0441\u0441\u0438\u044F.\u0438\u043A\u043E\u043C.museum";
+ 
++    private static final String AUSTRIAN_IDN_EMAIL_ADDRESS_ASCII = "noreply@xn--dmin-moa0i.example";
++    private static final String RUSSIAN_IDN_EMAIL_ADDRESS_ASCII = "noreply@xn--h1alffa9f.xn--h1aegh.museum";
++
+     private static final String GERMAN_IDN_EMAIL_NAME = "noreply@d\u00F6m\u00E4in.example";
+ 
+     private static final String[] IDN_EMAIL_ADDRESSES = { AUSTRIAN_IDN_EMAIL_ADDRESS, CZECH_IDN_EMAIL_ADDRESS, RUSSIAN_IDN_EMAIL_ADDRESS };
+@@ -48,8 +51,8 @@ class IDNEmailAddressConverterTest {
+ 
+     @Test
+     void testIDNEmailAddressToAsciiConversion() {
+-        assertEquals("noreply@xn--dmin-moa0i.example", idnEmailConverter.toASCII(AUSTRIAN_IDN_EMAIL_ADDRESS));
+-        assertEquals("noreply@xn--h1alffa9f.xn--h1aegh.museum", idnEmailConverter.toASCII(RUSSIAN_IDN_EMAIL_ADDRESS));
++        assertEquals(AUSTRIAN_IDN_EMAIL_ADDRESS_ASCII, idnEmailConverter.toASCII(AUSTRIAN_IDN_EMAIL_ADDRESS));
++        assertEquals(RUSSIAN_IDN_EMAIL_ADDRESS_ASCII, idnEmailConverter.toASCII(RUSSIAN_IDN_EMAIL_ADDRESS));
+     }
+ 
+     @Test
+@@ -61,9 +64,15 @@ class IDNEmailAddressConverterTest {
+         assertEquals(AUSTRIAN_IDN_EMAIL_ADDRESS, idnEmailConverter.toUnicode(addressWithPersonalName));
+     }
+ 
++    @Test
++    void testKnownAsciiValuesConvertBackToUnicode() {
++        assertEquals(AUSTRIAN_IDN_EMAIL_ADDRESS, idnEmailConverter.toUnicode(AUSTRIAN_IDN_EMAIL_ADDRESS_ASCII));
++        assertEquals(RUSSIAN_IDN_EMAIL_ADDRESS, idnEmailConverter.toUnicode(RUSSIAN_IDN_EMAIL_ADDRESS_ASCII));
++    }
++
+     @Test
+     void testMultipleIDNEmailAddressToAsciiConversion() {
+-        assertEquals("noreply@xn--dmin-moa0i.example", idnEmailConverter.toASCII(idnEmailConverter.toASCII(AUSTRIAN_IDN_EMAIL_ADDRESS)));
++        assertEquals(AUSTRIAN_IDN_EMAIL_ADDRESS_ASCII, idnEmailConverter.toASCII(idnEmailConverter.toASCII(AUSTRIAN_IDN_EMAIL_ADDRESS)));
+     }
+ 
+     @Test
