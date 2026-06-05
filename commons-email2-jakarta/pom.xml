@@ -31,10 +31,10 @@
   <description>Apache Commons Email provides an API for sending email, simplifying the JavaMail Javax API.</description>
 
   <dependencies>
-    <dependency>    
-      <groupId>org.apache.commons</groupId>    
-      <artifactId>commons-email2-core</artifactId>    
-      <version>2.0.0-M2-SNAPSHOT</version>
+    <dependency>
+      <groupId>org.apache.commons</groupId>
+      <artifactId>commons-email2-core</artifactId>
+      <version>${commons-email2.jakarta.core.version}</version>
     </dependency>
     <dependency>
       <groupId>org.eclipse.angus</groupId>
@@ -66,16 +66,19 @@
     <dependency>
       <groupId>org.slf4j</groupId>
       <artifactId>slf4j-jdk14</artifactId>
+      <version>${commons-email2.jakarta.slf4j-jdk14.version}</version>
       <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>commons-io</groupId>
       <artifactId>commons-io</artifactId>
+      <version>${commons-email2.jakarta.commons-io.version}</version>
       <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.mockito</groupId>
       <artifactId>mockito-core</artifactId>
+      <version>${commons-email2.jakarta.mockito-core.version}</version>
       <scope>test</scope>
     </dependency>
   </dependencies>
