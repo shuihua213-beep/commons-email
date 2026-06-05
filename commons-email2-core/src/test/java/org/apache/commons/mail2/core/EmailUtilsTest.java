@@ -19,9 +19,13 @@ package org.apache.commons.mail2.core;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertIterableEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -58,6 +62,30 @@ class EmailUtilsTest {
         assertTrue(EmailUtils.isEmpty((String) null));
         assertTrue(EmailUtils.isEmpty(""));
         assertFalse(EmailUtils.isEmpty("a"));
+    }
+
+    @Test
+    void testParseRfc822AddressesInvalidAddress() {
+        assertThrows(IllegalArgumentException.class, () -> EmailUtils.parseRfc822Addresses("\"Doe, Jane\" <invalid-address>, john@example.com"));
+    }
+
+    @Test
+    void testParseRfc822AddressesQuotedNames() {
+        assertIterableEquals(Collections.singletonList("jane.doe@example.com"),
+                EmailUtils.parseRfc822Addresses("\"Doe, Jane\" <jane.doe@example.com>"));
+    }
+
+    @Test
+    void testParseRfc822AddressesWhitespaceAndEmptyInput() {
+        assertTrue(EmailUtils.parseRfc822Addresses("  \t  ").isEmpty());
+        assertIterableEquals(Arrays.asList("jane.doe@example.com", "john.smith@example.com"),
+                EmailUtils.parseRfc822Addresses("  \"Doe, Jane\" <jane.doe@example.com> ,   john.smith@example.com  "));
+    }
+
+    @Test
+    void testParseRfc822AddressesWithMultipleRecipients() {
+        assertIterableEquals(Arrays.asList("jane.doe@example.com", "john.smith@example.com", "team@example.org"),
+                EmailUtils.parseRfc822Addresses("\"Doe, Jane\" <jane.doe@example.com>, John Smith <john.smith@example.com>, team@example.org"));
     }
 
     @Test

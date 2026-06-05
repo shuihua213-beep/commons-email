@@ -22,12 +22,15 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.Collection;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Random;
+import java.util.regex.Pattern;
 
 /**
  * Utility methods used by commons-email.
@@ -61,6 +64,9 @@ public final class EmailUtils {
      * BitSet of RFC 2392 safe URL characters.
      */
     private static final BitSet SAFE_URL = new BitSet(256);
+
+    private static final Pattern MAILBOX_PATTERN = Pattern.compile(
+            "[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\\.[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+)*@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+");
 
     // Static initializer for safe_uri
     static {
@@ -154,6 +160,91 @@ public final class EmailUtils {
             }
         }
         return builder.toString();
+    }
+
+    public static List<String> parseRfc822Addresses(final String value) {
+        final List<String> addresses = new ArrayList<>();
+        if (value == null || value.trim().isEmpty()) {
+            return addresses;
+        }
+        int tokenStart = 0;
+        boolean inQuotes = false;
+        boolean escaped = false;
+        int angleDepth = 0;
+        for (int i = 0; i < value.length(); i++) {
+            final char current = value.charAt(i);
+            if (escaped) {
+                escaped = false;
+                continue;
+            }
+            if (current == '\\' && inQuotes) {
+                escaped = true;
+                continue;
+            }
+            if (current == '"') {
+                inQuotes = !inQuotes;
+                continue;
+            }
+            if (!inQuotes) {
+                if (current == '<') {
+                    angleDepth++;
+                } else if (current == '>') {
+                    if (angleDepth == 0) {
+                        throw new IllegalArgumentException("Invalid RFC822 address list: " + value);
+                    }
+                    angleDepth--;
+                } else if (current == ',' && angleDepth == 0) {
+                    addParsedAddress(addresses, value.substring(tokenStart, i), value);
+                    tokenStart = i + 1;
+                }
+            }
+        }
+        if (inQuotes || angleDepth != 0) {
+            throw new IllegalArgumentException("Invalid RFC822 address list: " + value);
+        }
+        addParsedAddress(addresses, value.substring(tokenStart), value);
+        return addresses;
+    }
+
+    private static void addParsedAddress(final List<String> addresses, final String token, final String value) {
+        final String candidate = extractMailboxAddress(token, value);
+        if (candidate != null) {
+            addresses.add(candidate);
+        }
+    }
+
+    private static String extractMailboxAddress(final String token, final String value) {
+        final String trimmedToken = token.trim();
+        if (trimmedToken.isEmpty()) {
+            return null;
+        }
+        final int start = trimmedToken.indexOf('<');
+        if (start < 0) {
+            validateMailboxAddress(trimmedToken, value);
+            return trimmedToken;
+        }
+        final int end = trimmedToken.lastIndexOf('>');
+        if (end <= start || end != trimmedToken.length() - 1 || trimmedToken.indexOf('<', start + 1) >= 0) {
+            throw new IllegalArgumentException("Invalid RFC822 address list: " + value);
+        }
+        final String candidate = trimmedToken.substring(start + 1, end).trim();
+        validateMailboxAddress(candidate, value);
+        return candidate;
+    }
+
+    private static void validateMailboxAddress(final String address, final String value) {
+        if (address.isEmpty() || containsWhitespace(address) || !MAILBOX_PATTERN.matcher(address).matches()) {
+            throw new IllegalArgumentException("Invalid RFC822 address list: " + value);
+        }
+    }
+
+    private static boolean containsWhitespace(final String value) {
+        for (int i = 0; i < value.length(); i++) {
+            if (Character.isWhitespace(value.charAt(i))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
